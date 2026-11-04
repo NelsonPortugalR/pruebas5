@@ -1,0 +1,39 @@
+# Temporal: copia tal cual los archivos publicados en equipo-arequipa.pages.dev
+# a la carpeta site/ de esta rama, para recuperar el código fuente del sitio.
+name: snapshot-web
+on:
+  push:
+    branches: [snapshot-web]
+permissions:
+  contents: write
+jobs:
+  snap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Descargar el sitio publicado
+        run: |
+          set -u
+          BASE="https://equipo-arequipa.pages.dev"
+          rm -rf site && mkdir -p site
+          for f in index.html catalogo.html servicio.html oportunidad.html guias.html 404.html robots.txt sitemap.xml _headers _redirects favicon.ico favicon.svg favicon.png apple-touch-icon.png site.webmanifest manifest.json; do
+            code=$(curl -sS -L -o "site/$f" -w '%{http_code}' "$BASE/$f" || echo 000)
+            if [ "$code" != "200" ]; then rm -f "site/$f"; echo "$f -> $code"; else echo "$f OK $(wc -c < site/$f) bytes"; fi
+          done
+          # recorre también cualquier recurso local enlazado (css, js, imágenes)
+          mkdir -p mirror && (cd mirror && wget -q -r -l 3 -np -nH -p --no-cookies -R 'woff,woff2' "$BASE/" || true)
+          echo "--- mirror ---"; find mirror -type f | sort
+          # copia lo que el espejo haya encontrado y que no estuviera en la lista
+          (cd mirror && find . -type f) | while read -r p; do
+            rel="${p#./}"; [ -f "site/$rel" ] || { mkdir -p "site/$(dirname "$rel")"; cp "mirror/$rel" "site/$rel"; }
+          done
+          rm -rf mirror
+          grep -ohE '(src|href)="[^"]+"' site/*.html | sort -u > site/_referencias.txt || true
+          ls -laR site
+      - name: Guardar en la rama
+        run: |
+          git config user.name "snapshot"
+          git config user.email "snapshot@users.noreply.github.com"
+          git add -A site
+          git commit -m "snapshot del sitio publicado" || echo "nada que guardar"
+          git push origin HEAD:snapshot-web
