@@ -1,39 +1,42 @@
-# Temporal: copia tal cual los archivos publicados en equipo-arequipa.pages.dev
-# a la carpeta site/ de esta rama, para recuperar el código fuente del sitio.
+# Temporal: comprueba que el sitio publicado en el Worker de Cloudflare
+# ya tenga la versión v2 (no guarda nada; solo imprime el resultado).
 name: snapshot-web
 on:
   push:
     branches: [snapshot-web]
+  workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
-  snap:
+  check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Descargar el sitio publicado
+      - name: Comprobar el sitio publicado
         run: |
           set -u
-          BASE="https://equipo-arequipa.pages.dev"
-          rm -rf site && mkdir -p site
-          for f in index.html catalogo.html servicio.html oportunidad.html guias.html 404.html robots.txt sitemap.xml _headers _redirects favicon.ico favicon.svg favicon.png apple-touch-icon.png site.webmanifest manifest.json; do
-            code=$(curl -sS -L -o "site/$f" -w '%{http_code}' "$BASE/$f" || echo 000)
-            if [ "$code" != "200" ]; then rm -f "site/$f"; echo "$f -> $code"; else echo "$f OK $(wc -c < site/$f) bytes"; fi
+          BASE="https://equipo-arequipa-web.nelson1614.workers.dev"
+          for f in "" catalogo.html servicio.html oportunidad.html guias.html recetas.html guias/conectar-el-filtro-aqua-nano.html guias/usar-la-olla-a-presion.html sitemap.xml robots.txt og-image.png img/productos/000158.webp img/especiales/382000.webp; do
+            code=$(curl -sS -L -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000)
+            echo "$f -> $code $(wc -c < /tmp/p) bytes"
           done
-          # recorre también cualquier recurso local enlazado (css, js, imágenes)
-          mkdir -p mirror && (cd mirror && wget -q -r -l 3 -np -nH -p --no-cookies -R 'woff,woff2' "$BASE/" || true)
-          echo "--- mirror ---"; find mirror -type f | sort
-          # copia lo que el espejo haya encontrado y que no estuviera en la lista
-          (cd mirror && find . -type f) | while read -r p; do
-            rel="${p#./}"; [ -f "site/$rel" ] || { mkdir -p "site/$(dirname "$rel")"; cp "mirror/$rel" "site/$rel"; }
+          curl -sS -L "$BASE/" -o /tmp/index.html
+          for s in "935 253 801" "grado quirúrgico" "acero quirúrgico" "Pago contra entrega o en cuotas" "acompañada(o)" "inscritos(as) con nosotros" "Agenda de la semana" "Próximo: Taller" "videollamada" "Suilan" "+80 familias" "4.9" "Regalo del mes" "guias/conectar-el-filtro-aqua-nano.html" "recetas.html" "data-cat=\"solo\""; do
+            n=$(grep -c -- "$s" /tmp/index.html || true); echo "index: '$s' -> $n"
           done
-          rm -rf mirror
-          grep -ohE '(src|href)="[^"]+"' site/*.html | sort -u > site/_referencias.txt || true
-          ls -laR site
-      - name: Guardar en la rama
-        run: |
-          git config user.name "snapshot"
-          git config user.email "snapshot@users.noreply.github.com"
-          git add -A site
-          git commit -m "snapshot del sitio publicado" || echo "nada que guardar"
-          git push origin HEAD:snapshot-web
+          python3 - <<'PY'
+          import re,html
+          s=open('/tmp/index.html',encoding='utf-8').read()
+          print("emoji en index:", re.findall(r"[\U0001F300-\U0001FAFF☀-➿]", s.split("<body",1)[-1])[:5])
+          m=re.search(r'class="proof-grid">(.*?)</div><p class="proof-nota"', s, re.S)
+          print("cifras:", re.findall(r'<div class="n">(.*?)</div><div class="l">(.*?)</div>', m.group(1)) if m else "no hay proof-grid")
+          print("eventos:", re.findall(r'<div class="ev-date"><b>(.*?)</b><small>(.*?)</small></div><div><h3>(.*?)</h3>', s))
+          print("demoband:", re.findall(r'<h3>Próximo: (.*?)</h3>', s))
+          print("whatsapp links:", len(re.findall(r'51935253801', s)))
+          print("ld types:", sorted(set(re.findall(r'"@type":"([A-Za-z]+)"', s))))
+          PY
+          curl -sS -L "$BASE/catalogo.html" -o /tmp/cat.html
+          echo "catalogo: especiales categorías $(grep -o 'id="esp-[^"]*"' /tmp/cat.html | wc -l), solo $(grep -c 'id="solo"' /tmp/cat.html), sinónimos $(grep -o 'const SIN=\[.*\];' /tmp/cat.html | head -c 300)"
+          curl -sS -L "$BASE/servicio.html" -o /tmp/serv.html
+          echo "servicio: chips $(grep -o 'class="chip"' /tmp/serv.html | wc -l), rep-nav $(grep -c 'class="rep-nav"' /tmp/serv.html), select $(grep -c 'id="qprod"' /tmp/serv.html), pulido $(grep -c 'id="rep-pulido"' /tmp/serv.html), cocina $(grep -c 'id="rep-cocina"' /tmp/serv.html), 30309 $(grep -o '30309</span>' /tmp/serv.html | wc -l) $(grep -o 'S/ 2[0-9]</span><span class="c">Cód. 30309' /tmp/serv.html)"
+          curl -sS -L "$BASE/guias/conectar-el-filtro-aqua-nano.html" -o /tmp/g.html
+          echo "leccion: video $(grep -c '<video' /tmp/g.html), HowTo $(grep -c '"HowTo"' /tmp/g.html), wa $(grep -c 'data-wa="leccion"' /tmp/g.html)"
