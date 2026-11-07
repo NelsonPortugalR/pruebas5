@@ -11,6 +11,17 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Estado SEO de los dos sitios
+        run: |
+          for h in https://equipo-arequipa.pages.dev https://equipo-arequipa-web.nelson1614.workers.dev; do
+            code=$(curl -sS -L -o /tmp/h.html -w '%{http_code} %{url_effective}' "$h/" || echo 000)
+            echo "$h -> $code"
+            echo "  robots meta: $(grep -o '<meta name="robots"[^>]*>' /tmp/h.html | head -1)"
+            echo "  canonical: $(grep -o '<link rel="canonical"[^>]*>' /tmp/h.html | head -1)"
+            echo "  title: $(grep -o '<title>[^<]*' /tmp/h.html | head -1)"
+            echo "  robots.txt: $(curl -sS -L "$h/robots.txt" | tr '\n' ' ' | head -c 200)"
+            echo "  x-robots-tag: $(curl -sS -I -L "$h/" | grep -i 'x-robots-tag' | head -1)"
+          done
       - name: Comprobar el sitio publicado
         run: |
           set -u
