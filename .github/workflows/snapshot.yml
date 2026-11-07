@@ -20,23 +20,14 @@ jobs:
             echo "$f -> $code $(wc -c < /tmp/p) bytes"
           done
           curl -sS -L "$BASE/" -o /tmp/index.html
-          for s in "935 253 801" "grado quirúrgico" "acero quirúrgico" "Pago contra entrega o en cuotas" "acompañada(o)" "inscritos(as) con nosotros" "Agenda de la semana" "Próximo: Taller" "videollamada" "Suilan" "+80 familias" "4.9" "Regalo del mes" "guias/conectar-el-filtro-aqua-nano.html" "recetas.html" "data-cat=\"solo\""; do
+          for s in "Conoce los regalos del mes" "catalogo.html#regalos" "sola(o)" "Rena Ware es caro" "overflow-x:clip" "Consultar por WhatsApp" "Tacna" "Piura" "Fuera de Arequipa"; do
             n=$(grep -c -- "$s" /tmp/index.html || true); echo "index: '$s' -> $n"
           done
-          python3 - <<'PY'
-          import re,html
-          s=open('/tmp/index.html',encoding='utf-8').read()
-          print("emoji en index:", re.findall(r"[\U0001F300-\U0001FAFF☀-➿]", s.split("<body",1)[-1])[:5])
-          m=re.search(r'class="proof-grid">(.*?)</div><p class="proof-nota"', s, re.S)
-          print("cifras:", re.findall(r'<div class="n">(.*?)</div><div class="l">(.*?)</div>', m.group(1)) if m else "no hay proof-grid")
-          print("eventos:", re.findall(r'<div class="ev-date"><b>(.*?)</b><small>(.*?)</small></div><div><h3>(.*?)</h3>', s))
-          print("demoband:", re.findall(r'<h3>Próximo: (.*?)</h3>', s))
-          print("whatsapp links:", len(re.findall(r'51935253801', s)))
-          print("ld types:", sorted(set(re.findall(r'"@type":"([A-Za-z]+)"', s))))
-          PY
           curl -sS -L "$BASE/catalogo.html" -o /tmp/cat.html
-          echo "catalogo: especiales categorías $(grep -o 'id="esp-[^"]*"' /tmp/cat.html | wc -l), solo $(grep -c 'id="solo"' /tmp/cat.html), sinónimos $(grep -o 'const SIN=\[.*\];' /tmp/cat.html | head -c 300)"
-          curl -sS -L "$BASE/servicio.html" -o /tmp/serv.html
-          echo "servicio: chips $(grep -o 'class="chip"' /tmp/serv.html | wc -l), rep-nav $(grep -c 'class="rep-nav"' /tmp/serv.html), select $(grep -c 'id="qprod"' /tmp/serv.html), pulido $(grep -c 'id="rep-pulido"' /tmp/serv.html), cocina $(grep -c 'id="rep-cocina"' /tmp/serv.html), 30309 $(grep -o '30309</span>' /tmp/serv.html | wc -l) $(grep -o 'S/ 2[0-9]</span><span class="c">Cód. 30309' /tmp/serv.html)"
-          curl -sS -L "$BASE/guias/conectar-el-filtro-aqua-nano.html" -o /tmp/g.html
-          echo "leccion: video $(grep -c '<video' /tmp/g.html), HowTo $(grep -c '"HowTo"' /tmp/g.html), wa $(grep -c 'data-wa="leccion"' /tmp/g.html)"
+          echo "catalogo: overlay $(grep -c 'id="regalos-overlay"' /tmp/cat.html), cajas $(grep -o 'class="caja"' /tmp/cat.html | wc -l), barra fija $(grep -c 'class="barra-fija"' /tmp/cat.html), franja $(grep -c 'regalos-franja' /tmp/cat.html)"
+          curl -sS -L "$BASE/oportunidad.html" -o /tmp/op.html
+          echo "oportunidad: charla $(grep -o 'Próxima charla informativa</span><b>[^<]*' /tmp/op.html | head -1), afiliar $(grep -c 'data-wa="afiliar"' /tmp/op.html), S/ 70 $(grep -c 'S/ 70' /tmp/op.html), cifras $(grep -o 'mini-trust reveal">.\{0,160\}' /tmp/op.html | head -1)"
+          for f in recetas/pollo-dorado-sin-aceite.html guias/royal-prestige-vs-rena-ware.html; do
+            code=$(curl -sS -L -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000); echo "$f -> $code, noindex $(grep -c noindex /tmp/p), Recipe/Article $(grep -c '"@type":"Recipe"\|"@type":"Article"' /tmp/p)"
+          done
+          echo "sitemap: $(curl -sS -L "$BASE/sitemap.xml" | grep -c '<loc>') urls, royal en sitemap: $(curl -sS -L "$BASE/sitemap.xml" | grep -c royal)"
