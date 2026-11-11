@@ -1,5 +1,5 @@
-# Temporal: comprueba que el sitio publicado en el Worker de Cloudflare
-# ya tenga la versión v2 (no guarda nada; solo imprime el resultado).
+# Temporal: comprueba el sitio publicado en el Worker de Cloudflare
+# (no guarda nada; solo imprime el resultado).
 name: snapshot-web
 on:
   push:
@@ -11,34 +11,25 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Estado SEO de los dos sitios
-        run: |
-          for h in https://equipo-arequipa.pages.dev https://equipo-arequipa-web.nelson1614.workers.dev; do
-            code=$(curl -sS -L -o /tmp/h.html -w '%{http_code} %{url_effective}' "$h/" || echo 000)
-            echo "$h -> $code"
-            echo "  robots meta: $(grep -o '<meta name="robots"[^>]*>' /tmp/h.html | head -1)"
-            echo "  canonical: $(grep -o '<link rel="canonical"[^>]*>' /tmp/h.html | head -1)"
-            echo "  title: $(grep -o '<title>[^<]*' /tmp/h.html | head -1)"
-            echo "  robots.txt: $(curl -sS -L "$h/robots.txt" | tr '\n' ' ' | head -c 200)"
-            echo "  x-robots-tag: $(curl -sS -I -L "$h/" | grep -i 'x-robots-tag' | head -1)"
-          done
-      - name: Comprobar el sitio publicado
+      - name: Comprobar el sitio publicado (SEO v3)
         run: |
           set -u
           BASE="https://equipo-arequipa-web.nelson1614.workers.dev"
-          for f in "" catalogo.html servicio.html oportunidad.html guias.html recetas.html guias/conectar-el-filtro-aqua-nano.html guias/usar-la-olla-a-presion.html sitemap.xml robots.txt og-image.png img/productos/000158.webp img/especiales/382000.webp; do
+          for f in "" catalogo.html servicio.html oportunidad.html ollas-arequipa.html guias/ollas-de-acero-quirurgico.html productos/filtro-de-agua-aqua-nano-ctu-500.html productos/juego-chef-i-7-piezas.html productos/tetera-con-infusor-de-te.html guias/conectar-el-filtro-aqua-nano.html sitemap.xml img/productos/000125.webp; do
             code=$(curl -sS -L -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000)
-            echo "$f -> $code $(wc -c < /tmp/p) bytes"
+            echo "$f -> $code $(wc -c < /tmp/p) bytes | $(grep -o '<title>[^<]*' /tmp/p | head -1)"
           done
           curl -sS -L "$BASE/" -o /tmp/index.html
-          for s in "Conoce los regalos del mes" "catalogo.html#regalos" "sola(o)" "Rena Ware es caro" "overflow-x:clip" "Consultar por WhatsApp" "Tacna" "Piura" "Fuera de Arequipa"; do
+          for s in "Renaware" "Qué es Rena Ware y de dónde es" "ollas-arequipa.html" "Dónde comprar ollas Rena Ware en Arequipa" 'src="/img/'; do
             n=$(grep -c -- "$s" /tmp/index.html || true); echo "index: '$s' -> $n"
           done
           curl -sS -L "$BASE/catalogo.html" -o /tmp/cat.html
-          echo "catalogo: overlay $(grep -c 'id="regalos-overlay"' /tmp/cat.html), cajas $(grep -o 'class="caja"' /tmp/cat.html | wc -l), barra fija $(grep -c 'class="barra-fija"' /tmp/cat.html), franja $(grep -c 'regalos-franja' /tmp/cat.html)"
-          curl -sS -L "$BASE/oportunidad.html" -o /tmp/op.html
-          echo "oportunidad: charla $(grep -o 'Próxima charla informativa</span><b>[^<]*' /tmp/op.html | head -1), afiliar $(grep -c 'data-wa="afiliar"' /tmp/op.html), S/ 70 $(grep -c 'S/ 70' /tmp/op.html), cifras $(grep -o 'mini-trust reveal">.\{0,160\}' /tmp/op.html | head -1)"
-          for f in recetas/pollo-dorado-sin-aceite.html guias/royal-prestige-vs-rena-ware.html; do
-            code=$(curl -sS -L -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000); echo "$f -> $code, noindex $(grep -c noindex /tmp/p), Recipe/Article $(grep -c '"@type":"Recipe"\|"@type":"Article"' /tmp/p)"
-          done
-          echo "sitemap: $(curl -sS -L "$BASE/sitemap.xml" | grep -c '<loc>') urls, royal en sitemap: $(curl -sS -L "$BASE/sitemap.xml" | grep -c royal)"
+          echo "catalogo: enlaces a productos $(grep -o 'href="/productos/[^"]*"' /tmp/cat.html | sort -u | wc -l), overlay $(grep -c 'id="regalos-overlay"' /tmp/cat.html), h1 $(grep -o '<h1>[^<]*' /tmp/cat.html | head -1)"
+          curl -sS -L "$BASE/productos/filtro-de-agua-aqua-nano-ctu-500.html" -o /tmp/prod.html
+          echo "producto: precio $(grep -o 'PRECIO AL CONTADO\|Precio al contado' /tmp/prod.html | head -1), Product LD $(grep -c '"@type":"Product"' /tmp/prod.html), Breadcrumb $(grep -c BreadcrumbList /tmp/prod.html), FAQ $(grep -c FAQPage /tmp/prod.html), video $(grep -c '<video' /tmp/prod.html), img abs $(grep -c 'src="/img/' /tmp/prod.html), img rel $(grep -c 'src="img/' /tmp/prod.html)"
+          curl -sS -L "$BASE/ollas-arequipa.html" -o /tmp/ollas.html
+          echo "ollas: h1 $(grep -o '<h1 class="reveal">[^<]*' /tmp/ollas.html | head -1), tarjetas $(grep -o 'class="card"' /tmp/ollas.html | wc -l), distritos $(grep -c 'class="i-list distritos"' /tmp/ollas.html), tabla $(grep -c 'tabla comparar' /tmp/ollas.html)"
+          curl -sS -L "$BASE/guias/conectar-el-filtro-aqua-nano.html" -o /tmp/g.html
+          echo "guia filtro: img abs $(grep -c 'src="/img/' /tmp/g.html), img rel $(grep -c 'src="img/' /tmp/g.html)"
+          echo "sitemap: $(curl -sS -L "$BASE/sitemap.xml" | grep -c '<loc>') urls, productos $(curl -sS -L "$BASE/sitemap.xml" | grep -c '/productos/'), ollas $(curl -sS -L "$BASE/sitemap.xml" | grep -c 'ollas-arequipa'), acero $(curl -sS -L "$BASE/sitemap.xml" | grep -c 'acero-quirurgico'), royal $(curl -sS -L "$BASE/sitemap.xml" | grep -c royal)"
+          echo "robots: $(curl -sS -L "$BASE/robots.txt" | tr '\n' ' ')"
