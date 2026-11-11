@@ -39,16 +39,15 @@ jobs:
         run: |
           set -u
           sudo apt-get install -y -qq whois >/dev/null 2>&1 || true
-          echo "== .com y .net (RDAP de Verisign: 404 = libre, 200 = registrado)"
-          for d in equipoarequipa ollasarequipa ollasenarequipa equipoaqp ollasaqp arequipaollas cocinasanaarequipa ollasdeaceroarequipa ollasdeaceroquirurgico equipoarequipaperu; do
-            c=$(curl -sS -o /tmp/r.json -w '%{http_code}' "https://rdap.verisign.com/com/v1/domain/$d.com" || echo 000)
-            extra=""; [ "$c" = "200" ] && extra=" | $(grep -o '"eventAction":"expiration","eventDate":"[^"]*"' /tmp/r.json | head -1 | cut -d'"' -f8) | $(grep -o '"fn",{},"text","[^"]*"' /tmp/r.json | head -1 | cut -d'"' -f8)"
-            echo "$d.com -> $c$extra"
+          echo "== control del método (dominios que sí existen)"
+          for d in renaware.com nelsonportugal.com; do
+            echo "$d -> RDAP $(curl -s -o /dev/null -w '%{http_code}' "https://rdap.verisign.com/com/v1/domain/$d") | whois: $( (whois "$d" 2>/dev/null || true) | grep -iE '^ *(No match|Registrar:|Registry Expiry)' | head -2 | tr -s ' ' | tr '\n' ';')"
           done
-          for d in equipoarequipa ollasarequipa; do
-            c=$(curl -sS -o /dev/null -w '%{http_code}' "https://rdap.verisign.com/net/v1/domain/$d.net" || echo 000); echo "$d.net -> $c"
+          echo "== .com y .net"
+          for d in equipoarequipa.com ollasarequipa.com ollasenarequipa.com equipoaqp.com ollasaqp.com arequipaollas.com cocinasanaarequipa.com ollasdeaceroarequipa.com ollasdeaceroquirurgico.com equipoarequipa.net ollasarequipa.net; do
+            echo "$d -> RDAP $(curl -s -o /dev/null -w '%{http_code}' "https://rdap.verisign.com/${d##*.}/v1/domain/$d") | whois: $( (whois "$d" 2>/dev/null || true) | grep -iE '^ *(No match|Registrar:|Registry Expiry)' | head -2 | tr -s ' ' | tr '\n' ';')"
           done
           echo "== .pe y .com.pe (whois de punto.pe)"
-          for d in equipoarequipa.pe equipoarequipa.com.pe ollasarequipa.pe ollasarequipa.com.pe equipoaqp.pe ollasdeaceroquirurgico.pe; do
-            echo "--- $d"; (whois -h kero.yachay.pe "$d" 2>&1 || true) | grep -v '^%' | grep -iE 'status|registrant|registrar|no object|not registered|name server|domain name|creat|expir' | head -8
+          for d in equipoarequipa.pe equipoarequipa.com.pe ollasarequipa.pe ollasarequipa.com.pe equipoaqp.pe ollasdeaceroquirurgico.pe renaware.pe; do
+            echo "$d -> $( (whois -h kero.yachay.pe "$d" 2>&1 || true) | grep -iE 'Domain Status|Registrar:' | head -2 | tr -s ' ' | tr '\n' ';')"
           done
