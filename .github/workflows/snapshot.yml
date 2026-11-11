@@ -11,25 +11,44 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Comprobar el sitio publicado (SEO v3)
+      - name: Sitio publicado (direcciones limpias, contenido nuevo, sin nombres)
         run: |
           set -u
           BASE="https://equipo-arequipa-web.nelson1614.workers.dev"
-          for f in "" catalogo.html servicio.html oportunidad.html ollas-arequipa.html guias/ollas-de-acero-quirurgico.html productos/filtro-de-agua-aqua-nano-ctu-500.html productos/juego-chef-i-7-piezas.html productos/tetera-con-infusor-de-te.html guias/conectar-el-filtro-aqua-nano.html sitemap.xml img/productos/000125.webp; do
-            code=$(curl -sS -L -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000)
-            echo "$f -> $code $(wc -c < /tmp/p) bytes | $(grep -o '<title>[^<]*' /tmp/p | head -1)"
+          echo "== direcciones limpias (sin seguir redirecciones)"
+          for f in "" catalogo servicio oportunidad guias recetas ollas-arequipa calculadora-cuotas guias/que-es-rena-ware guias/garantia-rena-ware guias/ollas-rena-ware-antiguas guias/fallas-cocina-de-induccion-rena-ware guias/extractor-nutrex-press guias/opiniones-rena-ware guias/rena-ware-vs-tramontina-y-record recetas/huevo-frito-que-no-se-pega productos/juego-chef-i-7-piezas sitemap.xml robots.txt; do
+            code=$(curl -sS -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000)
+            canon=$(grep -o 'rel="canonical" href="[^"]*"' /tmp/p | head -1 | sed "s#rel=\"canonical\" href=\"$BASE##; s#\"##")
+            nombre=$(grep -ciE 'nelson[^1]|portugal' /tmp/p || true)
+            echo "/$f -> $code | canonical: $canon | $(grep -o '<title>[^<]*' /tmp/p | head -1 | cut -c8-70) | nombre personal: $nombre | noindex: $(grep -c 'noindex' /tmp/p || true)"
           done
-          curl -sS -L "$BASE/" -o /tmp/index.html
-          for s in "Renaware" "Qué es Rena Ware y de dónde es" "ollas-arequipa.html" "Dónde comprar ollas Rena Ware en Arequipa" 'src="/img/'; do
-            n=$(grep -c -- "$s" /tmp/index.html || true); echo "index: '$s' -> $n"
+          echo "== la dirección con .html"
+          curl -sS -o /dev/null -w 'catalogo.html -> %{http_code} a %{redirect_url}\n' "$BASE/catalogo.html"
+          curl -sS -o /dev/null -w 'guias/que-es-rena-ware.html -> %{http_code} a %{redirect_url}\n' "$BASE/guias/que-es-rena-ware.html"
+          curl -sS -o /dev/null -w 'index.html -> %{http_code} a %{redirect_url}\n' "$BASE/index.html"
+          curl -sS -o /dev/null -w 'no-existe -> %{http_code}\n' "$BASE/no-existe"
+          echo "== sitemap"
+          curl -sS "$BASE/sitemap.xml" -o /tmp/s.xml
+          echo "urls: $(grep -c '<loc>' /tmp/s.xml) | con .html: $(grep -c '\.html</loc>' /tmp/s.xml || true) | calculadora: $(grep -c 'calculadora-cuotas' /tmp/s.xml) | guias: $(grep -c '/guias/' /tmp/s.xml) | borradores: $(grep -c 'royal\|tramontina' /tmp/s.xml || true)"
+          echo "== inicio"
+          curl -sS "$BASE/" -o /tmp/i.html
+          echo "enlaces internos con .html: $(grep -o 'href="[a-z/][^":]*\.html' /tmp/i.html | wc -l) | tarjetas: $(grep -o 'class="post reveal"' /tmp/i.html | wc -l) | calculadora: $(grep -c 'href="/calculadora-cuotas"' /tmp/i.html)"
+          curl -sS "$BASE/calculadora-cuotas" -o /tmp/c.html
+          echo "calculadora: opciones $(grep -o '<option' /tmp/c.html | wc -l) | WebApplication $(grep -c 'WebApplication' /tmp/c.html) | FAQ $(grep -c 'FAQPage' /tmp/c.html)"
+      - name: Dominios candidatos (sin nombres de personas ni la marca registrada)
+        run: |
+          set -u
+          sudo apt-get install -y -qq whois >/dev/null 2>&1 || true
+          echo "== .com y .net (RDAP de Verisign: 404 = libre, 200 = registrado)"
+          for d in equipoarequipa ollasarequipa ollasenarequipa equipoaqp ollasaqp arequipaollas cocinasanaarequipa ollasdeaceroarequipa ollasdeaceroquirurgico equipoarequipaperu; do
+            c=$(curl -sS -o /tmp/r.json -w '%{http_code}' "https://rdap.verisign.com/com/v1/domain/$d.com" || echo 000)
+            extra=""; [ "$c" = "200" ] && extra=" | $(grep -o '"eventAction":"expiration","eventDate":"[^"]*"' /tmp/r.json | head -1 | cut -d'"' -f8) | $(grep -o '"fn",{},"text","[^"]*"' /tmp/r.json | head -1 | cut -d'"' -f8)"
+            echo "$d.com -> $c$extra"
           done
-          curl -sS -L "$BASE/catalogo.html" -o /tmp/cat.html
-          echo "catalogo: enlaces a productos $(grep -o 'href="/productos/[^"]*"' /tmp/cat.html | sort -u | wc -l), overlay $(grep -c 'id="regalos-overlay"' /tmp/cat.html), h1 $(grep -o '<h1>[^<]*' /tmp/cat.html | head -1)"
-          curl -sS -L "$BASE/productos/filtro-de-agua-aqua-nano-ctu-500.html" -o /tmp/prod.html
-          echo "producto: precio $(grep -o 'PRECIO AL CONTADO\|Precio al contado' /tmp/prod.html | head -1), Product LD $(grep -c '"@type":"Product"' /tmp/prod.html), Breadcrumb $(grep -c BreadcrumbList /tmp/prod.html), FAQ $(grep -c FAQPage /tmp/prod.html), video $(grep -c '<video' /tmp/prod.html), img abs $(grep -c 'src="/img/' /tmp/prod.html), img rel $(grep -c 'src="img/' /tmp/prod.html)"
-          curl -sS -L "$BASE/ollas-arequipa.html" -o /tmp/ollas.html
-          echo "ollas: h1 $(grep -o '<h1 class="reveal">[^<]*' /tmp/ollas.html | head -1), tarjetas $(grep -o 'class="card"' /tmp/ollas.html | wc -l), distritos $(grep -c 'class="i-list distritos"' /tmp/ollas.html), tabla $(grep -c 'tabla comparar' /tmp/ollas.html)"
-          curl -sS -L "$BASE/guias/conectar-el-filtro-aqua-nano.html" -o /tmp/g.html
-          echo "guia filtro: img abs $(grep -c 'src="/img/' /tmp/g.html), img rel $(grep -c 'src="img/' /tmp/g.html)"
-          echo "sitemap: $(curl -sS -L "$BASE/sitemap.xml" | grep -c '<loc>') urls, productos $(curl -sS -L "$BASE/sitemap.xml" | grep -c '/productos/'), ollas $(curl -sS -L "$BASE/sitemap.xml" | grep -c 'ollas-arequipa'), acero $(curl -sS -L "$BASE/sitemap.xml" | grep -c 'acero-quirurgico'), royal $(curl -sS -L "$BASE/sitemap.xml" | grep -c royal)"
-          echo "robots: $(curl -sS -L "$BASE/robots.txt" | tr '\n' ' ')"
+          for d in equipoarequipa ollasarequipa; do
+            c=$(curl -sS -o /dev/null -w '%{http_code}' "https://rdap.verisign.com/net/v1/domain/$d.net" || echo 000); echo "$d.net -> $c"
+          done
+          echo "== .pe y .com.pe (whois de punto.pe)"
+          for d in equipoarequipa.pe equipoarequipa.com.pe ollasarequipa.pe ollasarequipa.com.pe equipoaqp.pe ollasdeaceroquirurgico.pe; do
+            echo "--- $d"; (whois -h kero.yachay.pe "$d" 2>&1 || true) | grep -v '^%' | grep -iE 'status|registrant|registrar|no object|not registered|name server|domain name|creat|expir' | head -8
+          done
