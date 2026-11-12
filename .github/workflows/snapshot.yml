@@ -66,6 +66,19 @@ jobs:
             curl -sS -m 25 "$NUEVO/$f?utm_source=google&utm_medium=cpc&utm_campaign=marca" -o /tmp/p -w "/$f -> %{http_code} | "
             echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | OA_REF en plantilla: $(grep -c 'window.OA_REF' /tmp/p) | etiqueta de Google: $(grep -c 'googletagmanager' /tmp/p) | nota de cookies: $(grep -c 'cookies de Google' /tmp/p) | IDs: $(grep -o 'var M={[^}]*}' /tmp/p | head -1)"
           done
+      - name: Garantía en las fichas y páginas de destino de los anuncios (en vivo)
+        run: |
+          set -u
+          for f in productos/filtro-de-agua-aqua-nano-ctu-500 productos/cocina-de-induccion-ic-450 productos/olla-a-presion-8-l productos/nutrex-press-elite productos/juego-chef-i-7-piezas productos/juego-de-cuchillos-elite-16-piezas productos/rena-lite-pack-de-4; do
+            curl -sS -m 25 "$NUEVO/$f" -o /tmp/p -w "/$f -> %{http_code} | "
+            echo "nota: $(grep -o 'Entrega a domicilio en Arequipa · [^·]* ·' /tmp/p | head -1) | «de por vida»: $(grep -o 'de por vida' /tmp/p | wc -l)"
+          done
+          echo "== destinos de los anuncios, con el sufijo de campaña"
+          for f in "" catalogo ollas-arequipa servicio oportunidad calculadora-cuotas productos/filtro-de-agua-aqua-nano-ctu-500 guias/garantia-rena-ware productos/juego-gourmet-17-piezas productos/sarten-grande-con-tapa-30-cm productos/cubiertos-elite-35-piezas productos/tetera-con-infusor-de-te productos/botella-filtrante productos/rena-wok-34-cm; do
+            curl -sS -o /tmp/p -m 25 -w "/$f -> %{http_code} a [%{redirect_url}] | " "$NUEVO/$f?utm_source=google&utm_medium=cpc&utm_campaign=marca&utm_term=prueba"
+            echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | botones de WhatsApp: $(grep -o 'data-wa=\|wa.me/\|api.whatsapp.com' /tmp/p | wc -l) | noindex: $(grep -c 'noindex' /tmp/p)"
+          done
+          curl -sS -m 25 "$NUEVO/ollas-arequipa" | grep -o 'la olla a presión tiene su propia garantía' | head -1
       - name: Dirección antigua (workers.dev)
         run: |
           set -u
