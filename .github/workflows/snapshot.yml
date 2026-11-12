@@ -1,5 +1,5 @@
-# Temporal: comprueba el sitio publicado en el Worker de Cloudflare
-# (no guarda nada; solo imprime el resultado).
+# Temporal: comprueba desde fuera el sitio publicado (dominio propio y dirección antigua de Cloudflare).
+# No guarda nada; solo imprime el resultado.
 name: snapshot-web
 on:
   push:
@@ -10,44 +10,60 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      NUEVO: https://ollasarequipa.com
+      VIEJO: https://equipo-arequipa-web.nelson1614.workers.dev
     steps:
-      - name: Sitio publicado (direcciones limpias, contenido nuevo, sin nombres)
+      - name: Dominio (DNS, certificado y redirecciones)
         run: |
           set -u
-          BASE="https://equipo-arequipa-web.nelson1614.workers.dev"
-          echo "== direcciones limpias (sin seguir redirecciones)"
-          for f in "" catalogo servicio oportunidad guias recetas ollas-arequipa calculadora-cuotas guias/que-es-rena-ware guias/garantia-rena-ware guias/ollas-rena-ware-antiguas guias/fallas-cocina-de-induccion-rena-ware guias/extractor-nutrex-press guias/opiniones-rena-ware guias/rena-ware-vs-tramontina-y-record recetas/huevo-frito-que-no-se-pega productos/juego-chef-i-7-piezas sitemap.xml robots.txt; do
-            code=$(curl -sS -o /tmp/p -w '%{http_code}' "$BASE/$f" || echo 000)
-            canon=$(grep -o 'rel="canonical" href="[^"]*"' /tmp/p | head -1 | sed "s#rel=\"canonical\" href=\"$BASE##; s#\"##")
-            nombre=$(grep -ciE 'nelson[^1]|portugal' /tmp/p || true)
-            echo "/$f -> $code | canonical: $canon | $(grep -o '<title>[^<]*' /tmp/p | head -1 | cut -c8-70) | nombre personal: $nombre | noindex: $(grep -c 'noindex' /tmp/p || true)"
+          echo "== DNS"
+          for h in ollasarequipa.com www.ollasarequipa.com; do
+            echo "$h -> A: $(dig +short "$h" A | tr '\n' ' ')| AAAA: $(dig +short "$h" AAAA | tr '\n' ' ')"
           done
-          echo "== la dirección con .html"
-          curl -sS -o /dev/null -w 'catalogo.html -> %{http_code} a %{redirect_url}\n' "$BASE/catalogo.html"
-          curl -sS -o /dev/null -w 'guias/que-es-rena-ware.html -> %{http_code} a %{redirect_url}\n' "$BASE/guias/que-es-rena-ware.html"
-          curl -sS -o /dev/null -w 'index.html -> %{http_code} a %{redirect_url}\n' "$BASE/index.html"
-          curl -sS -o /dev/null -w 'no-existe -> %{http_code}\n' "$BASE/no-existe"
+          echo "NS: $(dig +short ollasarequipa.com NS | tr '\n' ' ')"
+          echo "TXT: $(dig +short ollasarequipa.com TXT | tr '\n' ' ')"
+          echo "== redirecciones (sin seguirlas)"
+          for u in "http://ollasarequipa.com/" "http://ollasarequipa.com/catalogo?x=1" "http://www.ollasarequipa.com/" "https://www.ollasarequipa.com/" "https://www.ollasarequipa.com/guias/que-es-rena-ware?x=1" "$NUEVO/catalogo.html" "$NUEVO/index.html" "$NUEVO/guias/que-es-rena-ware.html" "$NUEVO/no-existe" "$NUEVO/catalogo/"; do
+            curl -sS -o /dev/null -m 25 -w "$u -> %{http_code} a [%{redirect_url}]\n" "$u" || echo "$u -> ERROR"
+          done
+          echo "== certificado"
+          echo | openssl s_client -servername ollasarequipa.com -connect ollasarequipa.com:443 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName 2>/dev/null || echo "sin certificado"
+          echo "== cabeceras del inicio"
+          curl -sSI -m 25 "$NUEVO/" | grep -iE '^(HTTP|content-type|cache-control|x-robots-tag|server|strict-transport|location|content-encoding)' || true
+          curl -sS -m 25 --compressed -o /dev/null -w 'inicio: %{size_download} bytes en %{time_total}s (http %{http_version})\n' "$NUEVO/"
+      - name: Páginas en el dominio propio
+        run: |
+          set -u
+          for f in "" catalogo servicio oportunidad guias recetas ollas-arequipa calculadora-cuotas guias/que-es-rena-ware guias/garantia-rena-ware guias/ollas-de-acero-quirurgico guias/consultar-cuota-y-deuda-rena-ware guias/opiniones-rena-ware guias/royal-prestige-vs-rena-ware guias/rena-ware-vs-tramontina-y-record recetas/huevo-frito-que-no-se-pega productos/juego-chef-i-7-piezas; do
+            code=$(curl -sS -o /tmp/p -m 25 -w '%{http_code}' "$NUEVO/$f" || echo 000)
+            canon=$(grep -o 'rel="canonical" href="[^"]*"' /tmp/p | head -1 | sed 's#rel="canonical" href="##; s#"##')
+            echo "/$f -> $code | canonical: $canon | og:url: $(grep -o 'property="og:url" content="[^"]*"' /tmp/p | head -1 | sed 's#.*content="##; s#"##') | workers.dev: $(grep -c 'workers\.dev' /tmp/p || true) | nombre personal: $(grep -ciE 'nelson|portugal' /tmp/p || true) | noindex: $(grep -c 'noindex' /tmp/p || true) | $(grep -o '<title>[^<]*' /tmp/p | head -1 | cut -c8-60)"
+          done
+          echo "== datos estructurados del inicio (direcciones)"
+          curl -sS -m 25 "$NUEVO/" | grep -o '"\(url\|@id\|image\|logo\)": *"[^"]*"' | sort | uniq -c | head -20
+          echo "== verificación de Google"
+          curl -sS -m 25 "$NUEVO/" | grep -o '<meta name="google-site-verification"[^>]*>' || echo "sin etiqueta"
+          for g in googlecd63f0b146a53f34.html; do curl -sS -o /tmp/g -m 25 -w "$g -> %{http_code} " "$NUEVO/$g"; cat /tmp/g; echo; done
+          echo "== robots.txt"
+          curl -sS -m 25 "$NUEVO/robots.txt"
           echo "== sitemap"
-          curl -sS "$BASE/sitemap.xml" -o /tmp/s.xml
-          echo "urls: $(grep -c '<loc>' /tmp/s.xml) | con .html: $(grep -c '\.html</loc>' /tmp/s.xml || true) | calculadora: $(grep -c 'calculadora-cuotas' /tmp/s.xml) | guias: $(grep -c '/guias/' /tmp/s.xml) | borradores: $(grep -c 'royal\|tramontina' /tmp/s.xml || true)"
-          echo "== inicio"
-          curl -sS "$BASE/" -o /tmp/i.html
-          echo "enlaces internos con .html: $(grep -o 'href="[a-z/][^":]*\.html' /tmp/i.html | wc -l) | tarjetas: $(grep -o 'class="post reveal"' /tmp/i.html | wc -l) | calculadora: $(grep -c 'href="/calculadora-cuotas"' /tmp/i.html)"
-          curl -sS "$BASE/calculadora-cuotas" -o /tmp/c.html
-          echo "calculadora: opciones $(grep -o '<option' /tmp/c.html | wc -l) | WebApplication $(grep -c 'WebApplication' /tmp/c.html) | FAQ $(grep -c 'FAQPage' /tmp/c.html)"
-      - name: Dominios candidatos (sin nombres de personas ni la marca registrada)
+          curl -sS -m 25 -D /tmp/h "$NUEVO/sitemap.xml" -o /tmp/s.xml
+          grep -iE '^(HTTP|content-type|x-robots-tag)' /tmp/h || true
+          echo "urls: $(grep -c '<loc>' /tmp/s.xml) | en ollasarequipa.com: $(grep -c '<loc>https://ollasarequipa.com' /tmp/s.xml || true) | en workers.dev: $(grep -c 'workers\.dev' /tmp/s.xml || true) | con .html: $(grep -c '\.html</loc>' /tmp/s.xml || true) | borradores: $(grep -c 'royal\|tramontina' /tmp/s.xml || true)"
+          head -c 600 /tmp/s.xml; echo
+          echo "== cada dirección del sitemap responde 200 sin redirigir"
+          malas=0
+          for u in $(grep -o '<loc>[^<]*' /tmp/s.xml | sed 's#<loc>##'); do
+            code=$(curl -sS -o /dev/null -m 25 -w '%{http_code}' "$u" || echo 000)
+            if [ "$code" != "200" ]; then echo "$u -> $code"; malas=$((malas+1)); fi
+          done
+          echo "direcciones del sitemap con problema: $malas"
+      - name: Dirección antigua (workers.dev)
         run: |
           set -u
-          sudo apt-get install -y -qq whois >/dev/null 2>&1 || true
-          echo "== control del método (dominios que sí existen)"
-          for d in renaware.com nelsonportugal.com; do
-            echo "$d -> RDAP $(curl -s -o /dev/null -w '%{http_code}' "https://rdap.verisign.com/com/v1/domain/$d") | whois: $( (whois "$d" 2>/dev/null || true) | grep -iE '^ *(No match|Registrar:|Registry Expiry)' | head -2 | tr -s ' ' | tr '\n' ';')"
+          for f in "" catalogo guias/que-es-rena-ware; do
+            code=$(curl -sS -o /tmp/p -m 25 -w '%{http_code}' "$VIEJO/$f" || echo 000)
+            echo "/$f -> $code | canonical: $(grep -o 'rel="canonical" href="[^"]*"' /tmp/p | head -1 | sed 's#rel="canonical" href="##; s#"##') | x-robots: $(curl -sSI -m 25 "$VIEJO/$f" | grep -i '^x-robots-tag' | tr -d '\r' || true)"
           done
-          echo "== .com y .net"
-          for d in equipoarequipa.com ollasarequipa.com ollasenarequipa.com equipoaqp.com ollasaqp.com arequipaollas.com cocinasanaarequipa.com ollasdeaceroarequipa.com ollasdeaceroquirurgico.com equipoarequipa.net ollasarequipa.net; do
-            echo "$d -> RDAP $(curl -s -o /dev/null -w '%{http_code}' "https://rdap.verisign.com/${d##*.}/v1/domain/$d") | whois: $( (whois "$d" 2>/dev/null || true) | grep -iE '^ *(No match|Registrar:|Registry Expiry)' | head -2 | tr -s ' ' | tr '\n' ';')"
-          done
-          echo "== .pe y .com.pe (whois de punto.pe)"
-          for d in equipoarequipa.pe equipoarequipa.com.pe ollasarequipa.pe ollasarequipa.com.pe equipoaqp.pe ollasdeaceroquirurgico.pe renaware.pe; do
-            echo "$d -> $( (whois -h kero.yachay.pe "$d" 2>&1 || true) | grep -iE 'Domain Status|Registrar:' | head -2 | tr -s ' ' | tr '\n' ';')"
-          done
+          curl -sS -m 25 "$VIEJO/robots.txt" | grep -i sitemap || true
