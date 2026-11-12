@@ -59,6 +59,13 @@ jobs:
             if [ "$code" != "200" ]; then echo "$u -> $code"; malas=$((malas+1)); fi
           done
           echo "direcciones del sitemap con problema: $malas"
+      - name: Medición (script de origen y clics; etiqueta de Google solo si hay IDs)
+        run: |
+          set -u
+          for f in "" catalogo servicio oportunidad ollas-arequipa calculadora-cuotas guias/que-es-rena-ware productos/juego-chef-i-7-piezas recetas/huevo-frito-que-no-se-pega; do
+            curl -sS -m 25 "$NUEVO/$f?utm_source=google&utm_medium=cpc&utm_campaign=marca" -o /tmp/p -w "/$f -> %{http_code} | "
+            echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | OA_REF en plantilla: $(grep -c 'window.OA_REF' /tmp/p) | etiqueta de Google: $(grep -c 'googletagmanager' /tmp/p) | nota de cookies: $(grep -c 'cookies de Google' /tmp/p) | IDs: $(grep -o 'var M={[^}]*}' /tmp/p | head -1)"
+          done
       - name: Dirección antigua (workers.dev)
         run: |
           set -u
