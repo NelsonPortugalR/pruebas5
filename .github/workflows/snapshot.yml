@@ -79,22 +79,21 @@ jobs:
             echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | botones de WhatsApp: $(grep -o 'data-wa=\|wa.me/\|api.whatsapp.com' /tmp/p | wc -l) | noindex: $(grep -c 'noindex' /tmp/p)"
           done
           curl -sS -m 25 "$NUEVO/ollas-arequipa" | grep -o 'la olla a presión tiene su propia garantía' | head -1
-      - name: Guía de pago, paso a paso en Yape (en vivo)
+      - name: Guía de pago, paso a paso en Yape y en la app del BCP (en vivo)
         run: |
           set -u
           G="$NUEVO/guias/consultar-cuota-y-deuda-rena-ware"
           for i in $(seq 1 30); do
             curl -sS -m 25 "$G" -o /tmp/g || true
-            grep -q 'id="paso-a-paso-yape"' /tmp/g && break
+            grep -q 'id="paso-a-paso-bcp"' /tmp/g && break
             sleep 8
           done
-          echo "sección: $(grep -c 'id="paso-a-paso-yape"' /tmp/g) | pasos: $(grep -o '<li><div class="pc-txt">' /tmp/g | wc -l) | enlaces a la sección: $(grep -o 'href="#paso-a-paso-yape"' /tmp/g | wc -l) | columna En Yape: $(grep -o "data-col='En Yape'" /tmp/g | wc -l) | nombre personal: $(grep -ciE 'nelson|portugal' /tmp/g || true)"
-          echo "preguntas nuevas: $(grep -o '¿Cómo pago mi cuota de Rena Ware por Yape?\|¿Qué día vence mi cuota de Rena Ware?\|¿Por qué en Pronto Pago mi recibo sale como vencido?' /tmp/g | sort -u | wc -l) | actualizado: $(grep -o 'Actualizado el [^<]*' /tmp/g | head -1)"
+          echo "secciones: yape $(grep -c 'id="paso-a-paso-yape"' /tmp/g), bcp $(grep -c 'id="paso-a-paso-bcp"' /tmp/g) | pasos: $(grep -o '<li><div class="pc-txt">' /tmp/g | wc -l) | capturas con enlace para ampliar: $(grep -o '<figure><a href="/img/guias/[^"]*"' /tmp/g | wc -l) | columna En la app del BCP: $(grep -o "data-col='En la app del BCP'" /tmp/g | wc -l) | nombre personal: $(grep -ciE 'nelson|portugal' /tmp/g || true)"
+          echo "preguntas del BCP: $(grep -o '¿Cómo pago mi cuota de Rena Ware en la app del BCP?\|¿Cómo hago un pago adicional a mi deuda con Rena Ware?' /tmp/g | sort -u | wc -l) | menciones de Otro Cobranza: $(grep -o 'Otro Cobranza' /tmp/g | wc -l) | índice: $(grep -o '<a href="#paso-a-paso-[a-z]*">[^<]*' /tmp/g | sed 's/.*>//' | tr '\n' ';')"
           for img in $(grep -o 'src="/img/guias/[^"]*"' /tmp/g | sed 's/src="//; s/"//' | sort -u); do
             curl -sS -m 25 -o /tmp/i -w "$img -> %{http_code} %{content_type} %{size_download} bytes | " "$NUEVO$img"
-            echo "$(file -b /tmp/i | cut -c1-60) | sha256 $(sha256sum /tmp/i | cut -c1-16)"
+            echo "sha256 $(sha256sum /tmp/i | cut -c1-16)"
           done
-          grep -o '<img src="/img/guias/yape-7[^>]*>' /tmp/g
       - name: Dirección antigua (workers.dev)
         run: |
           set -u
