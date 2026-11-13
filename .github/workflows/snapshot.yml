@@ -5,6 +5,11 @@ on:
   push:
     branches: [snapshot-web]
   workflow_dispatch:
+    inputs:
+      conversion:
+        description: "Probar también el clic de conversión con un navegador (envía un clic de prueba a Google Ads)"
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -14,6 +19,7 @@ jobs:
       NUEVO: https://ollasarequipa.com
       VIEJO: https://equipo-arequipa-web.nelson1614.workers.dev
     steps:
+      - uses: actions/checkout@v4
       - name: Dominio (DNS, certificado y redirecciones)
         run: |
           set -u
@@ -67,6 +73,8 @@ jobs:
             echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | lee ref=: $(grep -c 'q.get("ref")' /tmp/p) | etiqueta de Google: $(grep -c 'googletagmanager.com/gtag/js?id=AW-1003626697' /tmp/p) | nota de cookies: $(grep -c 'cookies de Google' /tmp/p) | IDs: $(grep -o 'var M={[^}]*}' /tmp/p | head -1)"
           done
       - name: Conversión «Clic en WhatsApp» en vivo, con un navegador de verdad
+        # Ya se comprobó el 13-nov-2026. Solo corre si se pide a mano, para no mandar clics de prueba a Google Ads en cada revisión.
+        if: github.event_name == 'workflow_dispatch' && inputs.conversion
         run: |
           set -u
           for i in $(seq 1 30); do
@@ -147,6 +155,27 @@ jobs:
             curl -sS -m 25 -o /tmp/i -w "$img -> %{http_code} %{content_type} %{size_download} bytes | " "$NUEVO$img"
             echo "sha256 $(sha256sum /tmp/i | cut -c1-16)"
           done
+      - name: Datos estructurados en vivo (videos, productos, eventos y recetas, según las reglas de Google)
+        run: |
+          set -u
+          for i in $(seq 1 40); do
+            curl -sS -m 25 "$NUEVO/productos/juego-chef-i-7-piezas" -o /tmp/p || true
+            grep -q 'poster="/img/videos/' /tmp/p && break
+            sleep 8
+          done
+          python3 herramientas/validar_sd.py --vivo "$NUEVO"
+          echo "== ficha de producto: video y reproductor"
+          grep -o '<video[^>]*>' /tmp/p | cut -c1-220
+          grep -o '{"@context":"https://schema.org","@type":"VideoObject"[^<]*' /tmp/p | cut -c1-700
+          echo "== inicio: sin eventos y con la lista simple"
+          curl -sS -m 25 "$NUEVO/" -o /tmp/i
+          echo "Event: $(grep -c '"@type":"Event"' /tmp/i) | Product: $(grep -o '"@type":"Product"' /tmp/i | wc -l) | ItemList: $(grep -o '"@type":"ItemList"' /tmp/i | wc -l) | la agenda sigue en la página: $(grep -c 'id="eventos"' /tmp/i)"
+          for f in catalogo ollas-arequipa servicio; do
+            curl -sS -m 25 "$NUEVO/$f" -o /tmp/c
+            echo "/$f -> Product: $(grep -o '"@type":"Product"' /tmp/c | wc -l) | ListItem: $(grep -o '"@type":"ListItem"' /tmp/c | wc -l) | Service: $(grep -o '"@type":"Service"' /tmp/c | wc -l)"
+          done
+          echo "== receta"
+          curl -sS -m 25 "$NUEVO/recetas/arroz-graneado" | grep -o '"keywords":"[^"]*"\|"datePublished":"[^"]*"\|"image":"[^"]*"'
       - name: Dirección antigua (workers.dev)
         run: |
           set -u
