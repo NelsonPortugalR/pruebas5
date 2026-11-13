@@ -193,7 +193,7 @@ jobs:
             echo "/$f -> «Compartir»: $(grep -o 'Compartir' /tmp/x | wc -l) | «Navidad»: $(grep -o 'Navidad' /tmp/x | wc -l)"
           done
           echo "== panel del registro (publicado)"
-          curl -sS -m 25 "https://renaware-registro.nelson1614.workers.dev/admin.html" -o /tmp/a -w "admin.html -> %{http_code} %{size_download} bytes\n"
+          curl -sSL -m 25 "https://renaware-registro.nelson1614.workers.dev/admin.html" -o /tmp/a -w "admin.html -> %{http_code} %{size_download} bytes en %{url_effective}\n"
           echo "interruptor «En la web»: $(grep -c 'data-f="web"' /tmp/a) | guarda web: $(grep -c "cuerpo.web = c.web" /tmp/a) | ayuda: $(grep -o 'siguiente actualización automática' /tmp/a | wc -l) | fecha de Lima: $(grep -c '5\*3600000' /tmp/a)"
       - name: Dirección antigua (workers.dev)
         run: |
