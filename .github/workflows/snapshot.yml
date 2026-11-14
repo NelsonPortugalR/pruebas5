@@ -302,6 +302,144 @@ jobs:
           })().catch(e => { console.log('ERROR', e.message); process.exit(1); });
           EOF
           node prueba.js
+      - name: Paleta nueva (azul marino y terracota sobre blanco), portada y detalles de diseño, en vivo
+        run: |
+          set -u
+          for i in $(seq 1 40); do
+            curl -sS -m 25 "$NUEVO/" -o /tmp/p || true
+            curl -sS -m 25 "$NUEVO/catalogo" -o /tmp/c || true
+            grep -q -e '--marca:#152647' /tmp/p && grep -q -e '--franja:' /tmp/p && grep -q 'class="sello"' /tmp/p && grep -q 'confeti-capa' /tmp/c && break
+            sleep 8
+          done
+          echo "== la paleta en cada tipo de página"
+          for f in "" catalogo servicio oportunidad guias recetas ollas-arequipa calculadora-cuotas guias/que-es-rena-ware guias/usar-la-olla-a-presion productos/juego-gourmet-17-piezas recetas/arroz-graneado no-existe; do
+            curl -sS -m 25 "$NUEVO/$f" -o /tmp/p -w "/$f -> %{http_code} | "
+            echo "marca: $(grep -c -e '--marca:#152647' /tmp/p) | acento: $(grep -c -e '--acento:#B04B34' /tmp/p) | fondo: $(grep -c -e '--fondo:#FBFBFA' /tmp/p) | franja: $(grep -c -e '--franja:linear-gradient' /tmp/p) | variables de antes: $(grep -c -E -e '--(green|copper|sillar|cream)' /tmp/p) | colores de antes: $(grep -c -i -E '#(243F33|2F5443|4C7A63|B26A3A|C9874F|F4EDE1|FBF7EF|EDE3D2|B8523B|D2745C)' /tmp/p)"
+          done
+          echo "== archivos"
+          mal=0
+          for a in img/hero-000158.webp og-image.png favicon.svg site.webmanifest; do
+            code=$(curl -sS -m 25 -D /tmp/h -o /tmp/archivo -w '%{http_code}' "$NUEVO/$a" || echo 000)
+            echo "/$a -> $code | $(grep -i '^content-type' /tmp/h | tr -d '\r') | $(stat -c %s /tmp/archivo) bytes | $(file -b /tmp/archivo | cut -c1-90)"
+            [ "$code" = "200" ] || mal=$((mal+1))
+          done
+          echo "archivos que no responden 200: $mal"
+          echo "favicon en azul de la marca: $(curl -sS -m 25 "$NUEVO/favicon.svg" | grep -c -i '#152647') | manifiesto: $(curl -sS -m 25 "$NUEVO/site.webmanifest" | python3 -c "import json,sys; m=json.load(sys.stdin); print(m['theme_color'], m['background_color'])")"
+          curl -sS -m 25 "$NUEVO/" -o /tmp/p
+          echo "inicio -> foto de portada con prioridad: $(grep -c 'fetchpriority="high" src="/img/hero-' /tmp/p) | sello: $(grep -c 'class="sello"' /tmp/p) | cifras que cuentan: $(grep -o 'class="stat-num"' /tmp/p | wc -l) | botones del negocio: $(grep -c 'class="opp-botones' /tmp/p) | imagen para compartir: $(grep -o 'property="og:image" content="[^"]*"' /tmp/p | head -1)"
+          echo "== navegador"
+          mkdir -p /tmp/nav3 && cd /tmp/nav3
+          npm init -y >/dev/null 2>&1
+          npm i playwright-core@1.63.0 >/dev/null 2>&1 || npm i playwright-core >/dev/null 2>&1
+          cat > prueba.js <<'EOF'
+          const { chromium } = require('playwright-core');
+          const BASE = process.env.NUEVO;
+          const TAGS = /googletagmanager\.com|google-analytics\.com|doubleclick\.net|googleadservices\.com|google\.com\/(pagead|ccm)/;
+          (async () => {
+            const browser = await chromium.launch({ channel: 'chrome', headless: true });
+            const lista = [];
+            const anota = (n, ok, dato) => { lista.push([n, !!ok]); console.log((ok ? 'OK    ' : 'FALTA ') + n + (dato !== undefined ? '  [' + (typeof dato === 'string' ? dato : JSON.stringify(dato)) + ']' : '')); };
+            for (const [nombre, vp, movil] of [['celular', { width: 390, height: 844 }, true], ['escritorio', { width: 1280, height: 800 }, false]]) {
+              const ctx = await browser.newContext({ viewport: vp, isMobile: movil, hasTouch: movil, locale: 'es-PE' });
+              await ctx.route(TAGS, r => r.abort());   // la visita de prueba no cuenta en Analytics ni en Ads
+              const page = await ctx.newPage();
+              const errores = [];
+              page.on('pageerror', e => errores.push(String(e).slice(0, 120)));
+              await page.goto(BASE + '/', { waitUntil: 'load' });
+              await page.evaluate(() => document.fonts.ready);
+              await page.waitForTimeout(3200);
+              const h = await page.evaluate(() => {
+                const raiz = getComputedStyle(document.documentElement), doc = document.documentElement;
+                const img = document.querySelector('.escena .foto-real img'), sello = document.querySelector('.sello'), rs = sello.getBoundingClientRect(), ri = img.getBoundingClientRect();
+                const cta = document.querySelector('.hero .btn-green, .hero .btn'), fant = document.querySelector('.opp .btn-ghost');
+                return { marca: raiz.getPropertyValue('--marca').trim(), acento: raiz.getPropertyValue('--acento').trim(), fondo: getComputedStyle(document.body).backgroundColor,
+                  foto: img.getAttribute('src'), natural: img.naturalWidth, mezcla: getComputedStyle(img).mixBlendMode, anchoFoto: Math.round(ri.width), fotoEnPantalla: ri.top < innerHeight && ri.bottom > 0,
+                  selloEnPantalla: rs.top >= 0 && rs.bottom <= innerHeight && rs.left >= 0 && rs.right <= innerWidth, selloFondo: getComputedStyle(sello).backgroundColor, selloTexto: sello.textContent.replace(/\s+/g, ' ').trim().slice(-22),
+                  giro: getComputedStyle(sello.querySelector('svg')).animationName, brillo: getComputedStyle(document.querySelector('.escena .foto-real'), '::after').animationName,
+                  boton: cta ? getComputedStyle(cta).backgroundColor : null, fantasma: fant ? getComputedStyle(fant).color : null, fondoNegocio: getComputedStyle(document.querySelector('.opp')).backgroundColor,
+                  franja: getComputedStyle(document.querySelector('.finalcta')).backgroundImage.replace(/\s+/g, '').slice(-62), desborde: doc.scrollWidth - doc.clientWidth, titulo: getComputedStyle(document.querySelector('h1')).fontFamily.split(',')[0] };
+              });
+              anota(nombre + ': la página usa la paleta nueva sobre blanco', h.marca === '#152647' && h.acento === '#B04B34' && h.fondo === 'rgb(251, 251, 250)', [h.marca, h.acento, h.fondo]);
+              anota(nombre + ': la foto grande de la portada carga y se funde con el fondo', h.natural > 600 && /\/img\/hero-/.test(h.foto) && h.mezcla === 'multiply' && h.fotoEnPantalla, [h.foto, h.natural, h.anchoFoto]);
+              anota(nombre + ': el sello de garantía se ve entero, en terracota, y gira', h.selloEnPantalla && h.selloFondo === 'rgb(176, 75, 52)' && h.giro === 'giro' && /de por vida/.test(h.selloTexto), [h.selloTexto, h.giro]);
+              anota(nombre + ': el brillo de la portada está puesto', h.brillo === 'brillo');
+              anota(nombre + ': el botón principal es azul marino', h.boton === 'rgb(21, 38, 71)', h.boton);
+              anota(nombre + ': el botón «Ver la oportunidad completa» se ve (blanco sobre azul)', h.fantasma === 'rgb(255, 255, 255)' && h.fondoNegocio === 'rgb(21, 38, 71)', [h.fantasma, h.fondoNegocio]);
+              anota(nombre + ': la franja final lleva el degradado terracota', /rgb\(165,70,49\).*rgb\(183,91,70\)/.test(h.franja), h.franja);
+              anota(nombre + ': sin desborde a lo ancho y con la tipografía de títulos', h.desborde <= 0 && /Fraunces/.test(h.titulo), [h.desborde, h.titulo]);
+              // las cifras cuentan desde cero al llegar a ellas
+              const meta = await page.evaluate(() => [...document.querySelectorAll('.stat-num')].map(e => +e.dataset.count));
+              await page.evaluate(() => { const e = document.querySelector('.stat-num'); window.scrollTo(0, e.getBoundingClientRect().top + scrollY - innerHeight * .6); });
+              await page.waitForTimeout(600);
+              const medio = await page.evaluate(() => [...document.querySelectorAll('.stat-num')].map(e => +e.textContent));
+              await page.waitForTimeout(2200);
+              const fin = await page.evaluate(() => [...document.querySelectorAll('.stat-num')].map(e => +e.textContent));
+              anota(nombre + ': las cifras cuentan desde cero y terminan en su valor', meta.length === 4 && medio.some((v, k) => v < meta[k]) && fin.every((v, k) => v === meta[k]), { medio, fin });
+              // catálogo: fotos acercadas y papelitos al abrir el regalo
+              await page.goto(BASE + '/catalogo', { waitUntil: 'load' });
+              await page.waitForTimeout(1200);
+              const cat = await page.evaluate(() => {
+                const fotos = [...document.querySelectorAll('.card .pic.foto.prod img')];
+                const zs = fotos.map(i => parseFloat(getComputedStyle(i).getPropertyValue('--z')) || 0);
+                return { fotos: fotos.length, acercadas: zs.filter(z => z > 1.05).length, raras: zs.filter(z => z < 1 || z > 2.41).length, transforma: fotos.length ? getComputedStyle(fotos[0]).transform !== 'none' : false, desborde: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+              });
+              anota(nombre + ': las fotos del catálogo se acercan hasta llenar su casilla', cat.fotos >= 30 && cat.acercadas >= 20 && cat.raras === 0 && cat.transforma && cat.desborde <= 0, cat);
+              await page.click('#regalos');
+              await page.waitForSelector('#regalos-overlay:not([hidden])');
+              await page.waitForTimeout(1200);
+              const mide = () => page.evaluate(() => { const o = document.getElementById('regalos-overlay'); return { papelitos: document.querySelectorAll('.confeti').length, ancho: o.scrollWidth - o.clientWidth, alto: o.scrollHeight - o.clientHeight, fondo: getComputedStyle(o).backgroundColor }; });
+              const antes = await mide();
+              await page.click('.caja');
+              await page.waitForTimeout(450);
+              const durante = await mide();
+              await page.waitForTimeout(2300);
+              const despues = await mide();
+              anota(nombre + ': al abrir la caja salen los papelitos, sin agrandar la cortina, y desaparecen', durante.papelitos === 26 && durante.ancho === antes.ancho && durante.alto === antes.alto && despues.papelitos === 0 && antes.fondo === 'rgb(14, 26, 51)', { antes, durante, despues });
+              // receta: miniaturas de producto acercadas y en fila
+              await page.goto(BASE + '/recetas/arroz-graneado', { waitUntil: 'load' });
+              await page.waitForTimeout(800);
+              const rec = await page.evaluate(() => { const t = document.querySelector('.prod-rel'), i = t && t.querySelector('.pic.prod img'); if (!i) return null; const r = t.querySelector('.pic').getBoundingClientRect(); return { z: parseFloat(getComputedStyle(i).getPropertyValue('--z')), ancho: Math.round(r.width), alto: Math.round(t.getBoundingClientRect().height), n: document.querySelectorAll('.prod-rel').length }; });
+              anota(nombre + ': en las recetas, el producto usado sale en miniatura con la foto acercada', rec && rec.z >= 1 && rec.n >= 1 && rec.ancho <= 150 && rec.alto < 260, rec);
+              anota(nombre + ': sin errores de script', errores.length === 0, errores);
+              await ctx.close();
+            }
+            // con «reducir movimiento» activado, nada se mueve
+            {
+              const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'es-PE', reducedMotion: 'reduce' });
+              await ctx.route(TAGS, r => r.abort());
+              const page = await ctx.newPage();
+              await page.goto(BASE + '/', { waitUntil: 'load' });
+              await page.waitForTimeout(1500);
+              const q = await page.evaluate(() => ({ giro: getComputedStyle(document.querySelector('.sello svg')).animationName, brillo: getComputedStyle(document.querySelector('.escena .foto-real'), '::after').animationName }));
+              await page.evaluate(() => { const e = document.querySelector('.stat-num'); window.scrollTo(0, e.getBoundingClientRect().top + scrollY - innerHeight * .6); });
+              await page.waitForTimeout(500);
+              const cifras = await page.evaluate(() => [...document.querySelectorAll('.stat-num')].every(e => e.textContent === e.dataset.count));
+              await page.goto(BASE + '/catalogo#regalos', { waitUntil: 'load' });
+              await page.waitForSelector('#regalos-overlay:not([hidden])');
+              await page.waitForTimeout(900);
+              await page.click('.caja');
+              await page.waitForTimeout(400);
+              const papelitos = await page.evaluate(() => document.querySelectorAll('.confeti').length);
+              anota('con «reducir movimiento»: ni giro, ni brillo, ni conteo, ni papelitos', q.giro === 'none' && q.brillo === 'none' && cifras && papelitos === 0, { giro: q.giro, brillo: q.brillo, cifras, papelitos });
+              await ctx.close();
+            }
+            // la página de «no existe» también usa la paleta
+            {
+              const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+              await ctx.route(TAGS, r => r.abort());
+              const page = await ctx.newPage();
+              await page.goto(BASE + '/no-existe', { waitUntil: 'load' });
+              const n = await page.evaluate(() => ({ fondo: getComputedStyle(document.body).backgroundColor, boton: getComputedStyle(document.querySelector('.a1')).backgroundColor, texto: getComputedStyle(document.querySelector('.a1')).color }));
+              anota('la página de «no existe» usa la paleta', n.fondo === 'rgb(251, 251, 250)' && n.boton === 'rgb(21, 38, 71)' && n.texto === 'rgb(255, 255, 255)', n);
+              await ctx.close();
+            }
+            await browser.close();
+            const faltan = lista.filter(x => !x[1]).length;
+            console.log(lista.length + ' comprobaciones, ' + faltan + ' con falta');
+            if (faltan) process.exit(1);
+          })().catch(e => { console.log('ERROR', e.message); process.exit(1); });
+          EOF
+          node prueba.js
       - name: Dirección antigua (workers.dev)
         run: |
           set -u
