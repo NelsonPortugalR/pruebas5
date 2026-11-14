@@ -220,7 +220,7 @@ jobs:
           for i in $(seq 1 40); do
             curl -sS -m 25 "$NUEVO/" -o /tmp/p || true
             curl -sS -m 25 "$NUEVO/catalogo" -o /tmp/c || true
-            grep -q 'href="/favicon-96x96.png"' /tmp/p && grep -q 'img/regalos/' /tmp/c && break
+            grep -q 'href="/favicon-96x96.png"' /tmp/p && grep -q 'img/regalos/' /tmp/c && grep -q 'button.btn{font-family:inherit}' /tmp/c && break
             sleep 8
           done
           echo "== etiquetas del favicon en las páginas"
@@ -280,7 +280,8 @@ jobs:
                 centrada: Math.abs((r.left + r.right) / 2 - innerWidth / 2) < 2, foto: img ? img.getAttribute('src') : null, natural: img ? img.naturalWidth + 'x' + img.naturalHeight : null,
                 completa: img ? img.complete : false, ajuste: e ? e.objectFit : null, margen: e ? e.paddingTop : null, alt: img ? img.alt : null,
                 nombre: document.querySelector('.regalo .nom').textContent, visibleNombre: getComputedStyle(document.querySelector('.regalo .nom')).opacity,
-                titulo: document.getElementById('regalos-t').textContent, boton: document.getElementById('regalosBtn').textContent, sinFoto: !!caja.querySelector('.sin-foto') };
+                titulo: document.getElementById('regalos-t').textContent, boton: document.getElementById('regalosBtn').textContent, sinFoto: !!caja.querySelector('.sin-foto'),
+                fuenteBoton: getComputedStyle(document.getElementById('regalosBtn')).fontFamily, fuentePagina: getComputedStyle(document.body).fontFamily };
             });
             console.log('caja del regalo:', JSON.stringify(c));
             await page.click('#regalosBtn');
@@ -293,6 +294,7 @@ jobs:
               ['La foto ocupa toda la caja (sin margen) y la caja queda centrada', c.ajuste === 'cover' && c.margen === '0px' && c.centrada && c.ancho === c.alto && c.ancho >= 300],
               ['Debajo sale el nombre del regalo', /Tetera con infusor/.test(c.nombre) && c.visibleNombre === '1'],
               ['El botón lleva a las promociones y cierra la cortina', c.boton === 'Ver las promociones' && cerrada],
+              ['El botón usa la tipografía de la web', /Hanken Grotesk/.test(c.fuenteBoton) && c.fuenteBoton === c.fuentePagina],
             ];
             for (const [n, ok] of lista) console.log((ok ? 'OK    ' : 'FALTA ') + n);
             await browser.close();
