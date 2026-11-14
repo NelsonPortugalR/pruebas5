@@ -70,16 +70,17 @@ jobs:
           set -u
           for f in "" catalogo servicio oportunidad ollas-arequipa calculadora-cuotas guias/que-es-rena-ware productos/juego-chef-i-7-piezas recetas/huevo-frito-que-no-se-pega; do
             curl -sS -m 25 "$NUEVO/$f?ref=google/marca&gclid=prueba" -o /tmp/p -w "/$f -> %{http_code} | "
-            echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | lee ref=: $(grep -c 'q.get("ref")' /tmp/p) | etiqueta de Google: $(grep -c 'googletagmanager.com/gtag/js?id=AW-1003626697' /tmp/p) | nota de cookies: $(grep -c 'cookies de Google' /tmp/p) | IDs: $(grep -o 'var M={[^}]*}' /tmp/p | head -1)"
+            echo "oaClic: $(grep -c 'window.oaClic=' /tmp/p) | lee ref=: $(grep -c 'q.get("ref")' /tmp/p) | etiqueta de Google: $(grep -c 'googletagmanager.com/gtag/js?id=G-YV9NXJZHS2' /tmp/p) | Analytics y Ads configurados: $(grep -o 'gtag("config","[^"]*")' /tmp/p | wc -l) | nota de cookies: $(grep -c 'cookies de Google' /tmp/p) | IDs: $(grep -o 'var M={[^}]*}' /tmp/p | head -1)"
           done
-      - name: Conversión «Clic en WhatsApp» en vivo, con un navegador de verdad
-        # Ya se comprobó el 13-nov-2026. Solo corre si se pide a mano, para no mandar clics de prueba a Google Ads en cada revisión.
-        if: github.event_name == 'workflow_dispatch' && inputs.conversion
+      - name: Analytics y conversiones de Google Ads en vivo, con un navegador de verdad
+        # Manda clics de prueba a Google (sin clic de anuncio no cuentan como conversión). Solo corre si el mensaje del
+        # commit lleva [medicion] o si se pide a mano, para no hacerlo en cada revisión.
+        if: contains(github.event.head_commit.message, '[medicion]') || (github.event_name == 'workflow_dispatch' && inputs.conversion)
         run: |
           set -u
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             curl -sS -m 25 "$NUEVO/" -o /tmp/p || true
-            grep -q 'q.get("ref")' /tmp/p && grep -q 'AW-1003626697' /tmp/p && break
+            grep -q 'G-YV9NXJZHS2' /tmp/p && grep -q 'zesDCObAgLgdEMnByN4D' /tmp/p && break
             sleep 8
           done
           mkdir -p /tmp/nav && cd /tmp/nav
@@ -87,43 +88,55 @@ jobs:
           npm i playwright-core@1.63.0 >/dev/null 2>&1 || npm i playwright-core >/dev/null 2>&1
           cat > prueba.js <<'EOF'
           const { chromium } = require('playwright-core');
-          const BASE = process.env.NUEVO, CUENTA = '1003626697';
-          async function visita(browser, ruta, selector) {
-            const ctx = await browser.newContext({ viewport: { width: 390, height: 800 }, locale: 'es-PE' });
-            const page = await ctx.newPage();
-            const vistos = [];
-            page.on('response', r => {
-              const u = r.url();
-              if (!/googletagmanager\.com\/gtag\/js/.test(u) && !u.includes(CUENTA)) return;
-              const x = new URL(u);
-              vistos.push(r.status() + ' ' + x.host + x.pathname + (x.searchParams.get('label') ? ' | label=' + x.searchParams.get('label') : '') + (x.searchParams.get('id') ? ' | id=' + x.searchParams.get('id') : ''));
-            });
-            page.on('requestfailed', r => { const u = r.url(); if (/google|doubleclick/.test(u)) { const x = new URL(u); vistos.push('FALLO ' + x.host + x.pathname + ' ' + ((r.failure() || {}).errorText || '')); } });
-            await ctx.route(/api\.whatsapp\.com|wa\.me|whatsapp:/, r => r.abort());
-            await page.addInitScript(() => { window.__abiertas = []; window.open = (u) => { window.__abiertas.push(u); return null; }; });
-            await page.goto(BASE + ruta, { waitUntil: 'load' });
-            await page.waitForTimeout(3000);
-            console.log('== ' + ruta);
-            console.log('referencia de la visita:', JSON.stringify(await page.evaluate(() => window.OA_REF)));
-            console.log('gtag listo:', await page.evaluate(() => typeof window.gtag === 'function' && !!(window.google_tag_manager || window.google_tag_data)));
-            const href = await page.evaluate((sel) => {
-              const a = document.querySelector(sel); if (!a) return null;
-              document.addEventListener('click', e => e.preventDefault(), { once: true });
-              a.click(); return a.getAttribute('href');
-            }, selector);
-            console.log('el mensaje de WhatsApp termina en:', href ? JSON.stringify(decodeURIComponent(href).slice(-34).replace(/\n/g, ' ')) : 'NO HAY BOTON');
-            await page.waitForTimeout(5000);
-            console.log('conversiones en dataLayer:', JSON.stringify(await page.evaluate(() => Array.from(window.dataLayer || []).filter(x => { try { return x[0] === 'event' && x[1] === 'conversion'; } catch (e) { return false; } }).map(x => x[2].send_to))));
-            console.log('cookies de Google:', (await ctx.cookies()).map(c => c.name).filter(n => /^_gcl|^_ga/.test(n)).join(', ') || 'ninguna');
-            console.log(vistos.length ? vistos.join('\n') : 'sin peticiones a Google');
-            await ctx.close();
-          }
+          const BASE = process.env.NUEVO, GA = 'G-YV9NXJZHS2', CUENTA = '1003626697', WA = 'HBHdCM_PvbcdEMnByN4D', TEL = 'zesDCObAgLgdEMnByN4D';
           (async () => {
             const browser = await chromium.launch({ channel: 'chrome', headless: true });
-            await visita(browser, '/?ref=google/marca', '[data-wa]');
-            await visita(browser, '/productos/filtro-de-agua-aqua-nano-ctu-500?ref=google/filtro', 'a[href^="https://api.whatsapp.com/send"]');
-            await visita(browser, '/servicio', '[data-wa]');
+            const ctx = await browser.newContext({ viewport: { width: 390, height: 800 }, locale: 'es-PE' });
+            const page = await ctx.newPage();
+            const ga = [], ads = [], otros = [];
+            page.on('request', r => {
+              const u = r.url();
+              if (/\/g\/collect/.test(u)) {
+                const x = new URL(u);
+                const cuerpo = r.postData() || '';
+                const nombres = [x.searchParams.get('en')].concat(cuerpo.split('\n').map(l => (new URLSearchParams(l)).get('en'))).filter(Boolean);
+                const extra = cuerpo.split('\n').concat([x.search]).map(l => { const q = new URLSearchParams(l); return [q.get('ep.boton'), q.get('ep.origen')].filter(Boolean).join('/'); }).filter(Boolean);
+                ga.push({ host: x.host, tid: x.searchParams.get('tid'), eventos: nombres, extra });
+              } else if (u.includes('/pagead/conversion/' + CUENTA)) {
+                ads.push(new URL(u).searchParams.get('label'));
+              }
+            });
+            page.on('response', r => { const u = r.url(); if (/googletagmanager\.com\/gtag\/js/.test(u)) otros.push(r.status() + ' ' + new URL(u).pathname + '?id=' + new URL(u).searchParams.get('id')); if (/\/g\/collect/.test(u) || u.includes('/pagead/conversion/' + CUENTA)) otros.push(r.status() + ' ' + new URL(u).host + new URL(u).pathname); });
+            await ctx.route(/api\.whatsapp\.com|wa\.me|whatsapp:/, r => r.abort());
+            await page.addInitScript(() => { window.open = () => null; });
+            await page.goto(BASE + '/?ref=google/marca', { waitUntil: 'load' });
+            await page.waitForTimeout(6000);
+            const toca = (sel) => page.evaluate((sel) => { const a = document.querySelector(sel); if (!a) return false; document.addEventListener('click', e => e.preventDefault(), { once: true }); a.click(); return true; }, sel);
+            console.log('botón de WhatsApp tocado:', await toca('[data-wa]'));
+            await page.waitForTimeout(6000);
+            console.log('enlace de teléfono tocado:', await toca('a[href^="tel:"]'));
+            await page.waitForTimeout(7000);
+            await page.goto(BASE + '/catalogo', { waitUntil: 'load' });   // al salir de la página Analytics termina de enviar lo pendiente
+            await page.waitForTimeout(5000);
+            const eventos = ga.flatMap(g => g.eventos);
+            const ids = [...new Set(ga.map(g => g.tid))];
+            console.log('Analytics, propiedad que recibe:', ids.join(', ') || 'NINGUNA');
+            console.log('Analytics, eventos enviados:', eventos.join(', ') || 'NINGUNO');
+            console.log('Analytics, botón y origen:', [...new Set(ga.flatMap(g => g.extra))].join(' | ') || 'sin datos');
+            console.log('Ads, etiquetas de conversión enviadas:', ads.join(', ') || 'NINGUNA');
+            console.log('respuestas de Google:', [...new Set(otros)].join(' ; '));
+            console.log('cookies de Google:', (await ctx.cookies()).map(c => c.name).filter(n => /^_gcl|^_ga/.test(n)).join(', ') || 'ninguna');
+            const lista = [
+              ['Analytics recibe la visita (page_view) en ' + GA, ids.length === 1 && ids[0] === GA && eventos.includes('page_view')],
+              ['Analytics recibe el clic a WhatsApp', eventos.includes('clic_whatsapp')],
+              ['Analytics recibe el clic para llamar', eventos.includes('clic_llamada')],
+              ['Ads recibe la conversión de WhatsApp', ads.includes(WA)],
+              ['Ads recibe la conversión de llamada', ads.includes(TEL)],
+              ['Cada conversión de Ads se envía una sola vez', ads.filter(x => x === WA).length === 1 && ads.filter(x => x === TEL).length === 1],
+            ];
+            for (const [n, c] of lista) console.log((c ? 'OK    ' : 'FALTA ') + n);
             await browser.close();
+            if (!lista.every(x => x[1])) process.exit(1);
           })().catch(e => { console.log('ERROR', e.message); process.exit(1); });
           EOF
           node prueba.js
