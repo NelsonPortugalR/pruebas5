@@ -214,6 +214,92 @@ jobs:
           echo "== panel del registro (publicado)"
           curl -sSL -m 25 "https://renaware-registro.nelson1614.workers.dev/admin.html" -o /tmp/a -w "admin.html -> %{http_code} %{size_download} bytes en %{url_effective}\n"
           echo "interruptor «En la web»: $(grep -c 'data-f="web"' /tmp/a) | guarda web: $(grep -c "cuerpo.web = c.web" /tmp/a) | ayuda: $(grep -o 'siguiente actualización automática' /tmp/a | wc -l) | fecha de Lima: $(grep -c '5\*3600000' /tmp/a)"
+      - name: Favicon e iconos en vivo, y la caja del regalo del catálogo con un navegador de verdad
+        run: |
+          set -u
+          for i in $(seq 1 40); do
+            curl -sS -m 25 "$NUEVO/" -o /tmp/p || true
+            curl -sS -m 25 "$NUEVO/catalogo" -o /tmp/c || true
+            grep -q 'href="/favicon-96x96.png"' /tmp/p && grep -q 'img/regalos/' /tmp/c && break
+            sleep 8
+          done
+          echo "== etiquetas del favicon en las páginas"
+          for f in "" catalogo servicio oportunidad guias/que-es-rena-ware productos/juego-chef-i-7-piezas recetas/huevo-frito-que-no-se-pega no-existe; do
+            curl -sS -m 25 "$NUEVO/$f" -o /tmp/p -w "/$f -> %{http_code} | "
+            echo "png96: $(grep -c 'rel="icon" type="image/png" href="/favicon-96x96.png"' /tmp/p) | svg: $(grep -c 'rel="icon" type="image/svg+xml" href="/favicon.svg"' /tmp/p) | ico: $(grep -c 'rel="shortcut icon" href="/favicon.ico"' /tmp/p) | apple: $(grep -c 'rel="apple-touch-icon"' /tmp/p) | manifiesto: $(grep -c 'rel="manifest" href="/site.webmanifest"' /tmp/p) | icono incrustado antiguo: $(grep -c 'rel="icon" href="data:' /tmp/p)"
+          done
+          echo "== archivos de iconos"
+          mal=0
+          for a in favicon.ico favicon.svg favicon-96x96.png apple-touch-icon.png icon-192.png icon-512.png icon-maskable-512.png site.webmanifest img/regalos/tetera-con-infusor-navidad.webp; do
+            code=$(curl -sS -m 25 -D /tmp/h -o /tmp/archivo -w '%{http_code}' "$NUEVO/$a" || echo 000)
+            echo "/$a -> $code | $(grep -i '^content-type' /tmp/h | tr -d '\r') | $(grep -i '^cache-control' /tmp/h | tr -d '\r') | $(stat -c %s /tmp/archivo) bytes | $(file -b /tmp/archivo | cut -c1-120)"
+            [ "$code" = "200" ] || mal=$((mal+1))
+          done
+          echo "archivos que no responden 200: $mal"
+          echo "== manifiesto y logo del negocio"
+          curl -sS -m 25 "$NUEVO/site.webmanifest" | python3 -c "import json,sys; m=json.load(sys.stdin); print('nombre:', m['name'], '| corto:', m['short_name'], '| display:', m['display'], '| iconos:', [(i['src'], i['sizes'], i.get('purpose', 'any')) for i in m['icons']])"
+          curl -sS -m 25 "$NUEVO/" | grep -o '"logo": *"[^"]*"' | sort | uniq -c
+          echo "== navegador"
+          mkdir -p /tmp/nav2 && cd /tmp/nav2
+          npm init -y >/dev/null 2>&1
+          npm i playwright-core@1.63.0 >/dev/null 2>&1 || npm i playwright-core >/dev/null 2>&1
+          cat > prueba.js <<'EOF'
+          const { chromium } = require('playwright-core');
+          const BASE = process.env.NUEVO;
+          (async () => {
+            const browser = await chromium.launch({ channel: 'chrome', headless: true });
+            const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'es-PE' });
+            // esta visita de prueba no debe contar en Analytics ni en Ads
+            await ctx.route(/googletagmanager\.com|google-analytics\.com|doubleclick\.net|googleadservices\.com|google\.com\/(pagead|ccm)/, r => r.abort());
+            const page = await ctx.newPage();
+            const pedidas = [];
+            page.on('request', r => { if (r.url().includes('/img/regalos/')) pedidas.push(r.url()); });
+            await page.goto(BASE + '/catalogo', { waitUntil: 'load' });
+            await page.waitForTimeout(2500);
+            const iconos = await page.evaluate(async () => {
+              const out = [];
+              for (const l of document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')) {
+                // con «?prueba»: Playwright descarta por su cuenta las peticiones que terminan en /favicon.ico cuando intercepta la red
+                out.push(await new Promise(ok => { const i = new Image(); const n = l.href.split('/').pop(); i.onload = () => ok(n + ' ' + i.naturalWidth + 'x' + i.naturalHeight); i.onerror = () => ok(n + ' NO ABRE'); i.src = l.href + '?prueba=1'; }));
+              }
+              return out;
+            });
+            console.log('iconos enlazados que el navegador abre:', iconos.join(' | '));
+            const ocultaAlLlegar = await page.evaluate(() => document.getElementById('regalos-overlay').hidden);
+            const pedidaAlCargar = pedidas.length > 0;
+            console.log('quien llega de fuera -> cortina oculta:', ocultaAlLlegar, '| foto del regalo descargada sin abrirla:', pedidaAlCargar);
+            await page.click('#regalos');
+            await page.waitForSelector('#regalos-overlay:not([hidden])');
+            await page.waitForTimeout(1500);
+            await page.click('.caja');
+            await page.waitForTimeout(1500);
+            const c = await page.evaluate(() => {
+              const caja = document.querySelector('.caja'), img = caja.querySelector('.dentro img'), r = caja.getBoundingClientRect();
+              const e = img ? getComputedStyle(img) : null;
+              return { cajas: document.querySelectorAll('.caja').length, abierta: caja.classList.contains('abierta'), ancho: Math.round(r.width), alto: Math.round(r.height),
+                centrada: Math.abs((r.left + r.right) / 2 - innerWidth / 2) < 2, foto: img ? img.getAttribute('src') : null, natural: img ? img.naturalWidth + 'x' + img.naturalHeight : null,
+                completa: img ? img.complete : false, ajuste: e ? e.objectFit : null, margen: e ? e.paddingTop : null, alt: img ? img.alt : null,
+                nombre: document.querySelector('.regalo .nom').textContent, visibleNombre: getComputedStyle(document.querySelector('.regalo .nom')).opacity,
+                titulo: document.getElementById('regalos-t').textContent, boton: document.getElementById('regalosBtn').textContent, sinFoto: !!caja.querySelector('.sin-foto') };
+            });
+            console.log('caja del regalo:', JSON.stringify(c));
+            await page.click('#regalosBtn');
+            await page.waitForTimeout(1000);
+            const cerrada = await page.evaluate(() => document.getElementById('regalos-overlay').hidden);
+            const lista = [
+              ['Los iconos enlazados abren en el navegador', iconos.length >= 4 && !iconos.some(x => /NO ABRE/.test(x))],
+              ['La foto del regalo no se descarga hasta abrir la cortina', ocultaAlLlegar && !pedidaAlCargar],
+              ['La caja se abre y muestra la foto de la tetera', c.abierta && !c.sinFoto && c.completa && c.natural === '900x900' && /tetera-con-infusor-navidad\.webp$/.test(c.foto || '')],
+              ['La foto ocupa toda la caja (sin margen) y la caja queda centrada', c.ajuste === 'cover' && c.margen === '0px' && c.centrada && c.ancho === c.alto && c.ancho >= 300],
+              ['Debajo sale el nombre del regalo', /Tetera con infusor/.test(c.nombre) && c.visibleNombre === '1'],
+              ['El botón lleva a las promociones y cierra la cortina', c.boton === 'Ver las promociones' && cerrada],
+            ];
+            for (const [n, ok] of lista) console.log((ok ? 'OK    ' : 'FALTA ') + n);
+            await browser.close();
+            if (!lista.every(x => x[1])) process.exit(1);
+          })().catch(e => { console.log('ERROR', e.message); process.exit(1); });
+          EOF
+          node prueba.js
       - name: Dirección antigua (workers.dev)
         run: |
           set -u
