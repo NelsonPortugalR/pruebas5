@@ -1,0 +1,32 @@
+# Temporal: saca una hoja de fotogramas de los videos de producto que se repiten entre dos productos,
+# para ver qué producto muestran. No cambia nada; deja las hojas como artefacto de la corrida.
+name: fotogramas
+on:
+  push:
+    branches: [fotogramas]
+permissions:
+  contents: read
+jobs:
+  hojas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hojas de fotogramas
+        run: |
+          set -eu
+          sudo apt-get -qq update >/dev/null && sudo apt-get -qq install -y ffmpeg >/dev/null
+          base=https://kiexpdaaoegbtesqmaff.supabase.co/storage/v1/object/public/videos
+          mkdir -p hojas
+          for v in 000147-1783479424349 000118-1783479537828 000159-1783479170555; do
+            curl -sSfL -o "$v.mp4" "$base/$v.mp4"
+            dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$v.mp4")
+            # 12 fotogramas repartidos en todo el video, en una hoja de 4 x 3
+            fps=$(python3 -c "print(12/float('$dur'))")
+            ffmpeg -v error -i "$v.mp4" -vf "fps=$fps,scale=360:-2,tile=4x3:padding=6:margin=6" -frames:v 1 -q:v 4 "hojas/$v.jpg"
+            echo "$v: $dur s"
+          done
+          ls -la hojas
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hojas
+          path: hojas/
+          retention-days: 3
