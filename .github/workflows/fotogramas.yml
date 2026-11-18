@@ -12,23 +12,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Hojas de fotogramas
-        timeout-minutes: 6
+        timeout-minutes: 15
         run: |
           set -eu
           pip install -q imageio-ffmpeg
           FF=$(python3 -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
           base=https://kiexpdaaoegbtesqmaff.supabase.co/storage/v1/object/public/videos
-          mkdir -p hojas
-          for par in 000147-1783479424349:65.9 000118-1783479537828:81.1 000159-1783479170555:106.1; do
-            v=${par%%:*}; dur=${par##*:}
-            curl -sSfL --max-time 120 -o "$v.mp4" "$base/$v.mp4"
-            fps=$(python3 -c "print(12/float('$dur'))")
-            "$FF" -v error -i "$v.mp4" -vf "fps=$fps,scale=360:-2,tile=4x3:padding=6:margin=6" -frames:v 1 -q:v 4 "hojas/$v.jpg"
+          mkdir -p finales
+          # el cierre de cada video (donde Rena Ware pone el nombre del producto): 3 fotogramas de los últimos segundos
+          while read -r v dur; do
+            [ -n "$v" ] || continue
+            curl -sSfL --max-time 180 -o v.mp4 "$base/$v.mp4"
+            i=0
+            for atras in 5 2.5 0.8; do
+              t=$(python3 -c "print(max(0, float('$dur') - $atras))")
+              "$FF" -v error -ss "$t" -i v.mp4 -frames:v 1 -vf "scale=320:-2" -q:v 5 "f$i.jpg" || true
+              i=$((i+1))
+            done
+            "$FF" -v error -i f0.jpg -i f1.jpg -i f2.jpg -filter_complex "hstack=inputs=3" -q:v 5 "finales/$v.jpg" || echo "sin hoja $v"
+            rm -f v.mp4 f0.jpg f1.jpg f2.jpg
             echo "$v listo"
-          done
-          ls -la hojas
+          done < videos.txt
+          # el video de los juegos Chef: 24 fotogramas repartidos
+          curl -sSfL --max-time 180 -o chef.mp4 "$base/000159-1783479170555.mp4"
+          "$FF" -v error -i chef.mp4 -vf "fps=24/106.1,scale=320:-2,tile=6x4:padding=4:margin=4" -frames:v 1 -q:v 4 "finales/chef-24.jpg"
+          ls finales | wc -l
       - name: Guardar las hojas en esta rama
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add hojas && git commit -q -m "Hojas de fotogramas" && git push -q origin HEAD:fotogramas
+          git add finales && git commit -q -m "Hojas de fotogramas" && git push -q origin HEAD:fotogramas
