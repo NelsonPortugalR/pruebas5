@@ -5,11 +5,12 @@ on:
   push:
     branches: [fotogramas]
 permissions:
-  contents: read
+  contents: write
 jobs:
   hojas:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Hojas de fotogramas
         run: |
           set -eu
@@ -25,8 +26,8 @@ jobs:
             echo "$v: $dur s"
           done
           ls -la hojas
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hojas
-          path: hojas/
-          retention-days: 3
+      - name: Guardar las hojas en esta rama
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add hojas && git commit -q -m "Hojas de fotogramas" && git push -q origin HEAD:fotogramas
