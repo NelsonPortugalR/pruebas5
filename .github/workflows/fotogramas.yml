@@ -12,18 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Hojas de fotogramas
+        timeout-minutes: 6
         run: |
           set -eu
-          sudo apt-get -qq update >/dev/null && sudo apt-get -qq install -y ffmpeg >/dev/null
+          pip install -q imageio-ffmpeg
+          FF=$(python3 -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
           base=https://kiexpdaaoegbtesqmaff.supabase.co/storage/v1/object/public/videos
           mkdir -p hojas
-          for v in 000147-1783479424349 000118-1783479537828 000159-1783479170555; do
-            curl -sSfL -o "$v.mp4" "$base/$v.mp4"
-            dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$v.mp4")
-            # 12 fotogramas repartidos en todo el video, en una hoja de 4 x 3
+          for par in 000147-1783479424349:65.9 000118-1783479537828:81.1 000159-1783479170555:106.1; do
+            v=${par%%:*}; dur=${par##*:}
+            curl -sSfL --max-time 120 -o "$v.mp4" "$base/$v.mp4"
             fps=$(python3 -c "print(12/float('$dur'))")
-            ffmpeg -v error -i "$v.mp4" -vf "fps=$fps,scale=360:-2,tile=4x3:padding=6:margin=6" -frames:v 1 -q:v 4 "hojas/$v.jpg"
-            echo "$v: $dur s"
+            "$FF" -v error -i "$v.mp4" -vf "fps=$fps,scale=360:-2,tile=4x3:padding=6:margin=6" -frames:v 1 -q:v 4 "hojas/$v.jpg"
+            echo "$v listo"
           done
           ls -la hojas
       - name: Guardar las hojas en esta rama
